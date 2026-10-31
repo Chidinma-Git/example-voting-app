@@ -1,0 +1,59 @@
+images:
+  vote:
+    repository: ghcr.io/chidinma-git/example-voting-app-vote
+    tag: "3aa80046c74b6ac776df190fa5b91667fdb5cd7e"
+    pullPolicy: IfNotPresent
+
+  result:
+    repository: ghcr.io/chidinma-git/example-voting-app-result
+    tag: "3aa80046c74b6ac776df190fa5b91667fdb5cd7e"
+    pullPolicy: IfNotPresent
+
+  worker:
+    repository: ghcr.io/chidinma-git/example-voting-app-worker
+    tag: "3aa80046c74b6ac776df190fa5b91667fdb5cd7e"
+    pullPolicy: IfNotPresent
+
+  redis:
+    repository: redis
+    tag: alpine
+    pullPolicy: IfNotPresent
+
+  postgres:
+    repository: postgres
+    tag: 15-alpine
+    pullPolicy: IfNotPresent
+
+replicaCount:
+  vote: 1
+  result: 1
+  worker: 1
+  redis: 1
+  postgres: 1
+
+services:
+  vote:
+    type: NodePort
+    port: 8080
+    targetPort: 80
+    nodePort: 31000
+
+  result:
+    type: NodePort
+    port: 8081
+    targetPort: 80
+    nodePort: 31001
+
+  redis:
+    type: ClusterIP
+    port: 6379
+    targetPort: 6379
+
+  postgres:
+    type: ClusterIP
+    port: 5432
+    targetPort: 5432
+
+postgres:
+  user: postgres
+  password: postgres
