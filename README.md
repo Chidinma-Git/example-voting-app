@@ -1,65 +1,369 @@
-# Example Voting App
+# Example Voting App — DevOps Capstone
 
-A simple distributed application running across multiple Docker containers.
+A containerized distributed voting application deployed to Amazon EKS using Terraform, GitHub Actions, and Helm.
 
-## Getting started
+## Project Overview
 
-Download [Docker Desktop](https://www.docker.com/products/docker-desktop) for Mac or Windows. [Docker Compose](https://docs.docker.com/compose) will be automatically installed. On Linux, make sure you have the latest version of [Compose](https://docs.docker.com/compose/install/).
+The Example Voting App is a distributed application consisting of five services:
 
-This solution uses Python, Node.js, .NET, with Redis for messaging and Postgres for storage.
+- **Vote** — Python web application where users cast votes.
+- **Redis** — Stores incoming votes temporarily.
+- **Worker** — .NET service that consumes votes from Redis and stores them in PostgreSQL.
+- **PostgreSQL** — Persistent data store for the voting results.
+- **Result** — Node.js web application that displays the results.
 
-Run in this directory to build and run the app:
+### Application Flow
 
-```shell
+```text
+User
+  |
+  v
+Vote App
+  |
+  v
+Redis
+  |
+  v
+Worker
+  |
+  v
+PostgreSQL
+  |
+  v
+Result App
+```
+
+## DevOps Implementation
+
+This capstone demonstrates:
+
+- Docker containerization and hardening
+- Non-root containers
+- Pinned Docker base images
+- Docker `.dockerignore` files
+- Trivy vulnerability scanning
+- GitHub Actions CI/CD
+- GitHub Container Registry (GHCR)
+- Terraform infrastructure provisioning
+- Amazon EKS
+- Kubernetes
+- Helm deployments
+- Helm rollback
+
+## 1. Run Locally with Docker Compose
+
+Start the application:
+
+```bash
 docker compose up
 ```
 
-The `vote` app will be running at [http://localhost:8080](http://localhost:8080), and the `results` will be at [http://localhost:8081](http://localhost:8081).
+The Vote application is available at:
 
-Alternately, if you want to run it on a [Docker Swarm](https://docs.docker.com/engine/swarm/), first make sure you have a swarm. If you don't, run:
-
-```shell
-docker swarm init
+```text
+http://localhost:8080
 ```
 
-Once you have your swarm, in this directory run:
+The Result application is available at:
 
-```shell
-docker stack deploy --compose-file docker-stack.yml vote
+```text
+http://localhost:8081
 ```
 
-## Run the app in Kubernetes
+## 2. Container Security
 
-The folder k8s-specifications contains the YAML specifications of the Voting App's services.
+The application images were hardened by:
 
-Run the following command to create the deployments and services. Note it will create these resources in your current namespace (`default` if you haven't changed it.)
+- Pinning Docker base images to immutable SHA256 digests.
+- Running application containers as non-root users where applicable.
+- Adding `.dockerignore` files.
+- Removing unnecessary packages and dependencies.
+- Scanning built images with Trivy.
 
-```shell
-kubectl create -f k8s-specifications/
+The GitHub Actions pipeline fails when HIGH or CRITICAL vulnerabilities are detected.
+
+## 3. Infrastructure with Terraform
+
+Terraform was used to provision the Amazon EKS cluster.
+
+The Terraform configuration creates the Kubernetes cluster infrastructure in AWS and allows the environment to be rebuilt from code.
+
+Terraform directory:
+
+```text
+terraform/
 ```
 
-The `vote` web app is then available on port 31000 on each host of the cluster, the `result` web app is available on port 31001.
+Validate the configuration:
 
-To remove them, run:
-
-```shell
-kubectl delete -f k8s-specifications/
+```bash
+terraform validate
 ```
+
+Apply the infrastructure:
+
+```bash
+terraform apply
+```
+
+Configure kubectl:
+
+```bash
+aws eks update-kubeconfig \
+  --region us-east-1 \
+  --name voting-app-cluster
+```
+
+Verify the cluster:
+
+```bash
+kubectl get nodes
+```
+
+## 4. GitHub Actions CI/CD
+
+The GitHub Actions workflow is located at:
+
+```text
+.github/workflows/ci-cd.yaml
+```
+
+Every push to `main` runs the following pipeline:
+
+```text
+GitHub Push
+    |
+    v
+Integration Tests
+    |
+    v
+Build Docker Images
+    |
+    v
+Trivy Security Scan
+    |
+    v
+Push Images to GHCR
+```
+
+Images are tagged using the Git commit SHA.
+
+Example:
+
+```text
+ghcr.io/chidinma-git/example-voting-app-vote:<commit-sha>
+```
+
+The pipeline builds and scans:
+
+- Vote
+- Result
+- Worker
+
+## 5. Deploy with Helm
+
+The Kubernetes deployment is packaged as a Helm chart:
+
+```text
+helm/
+├── Chart.yaml
+├── values.yaml
+├── .helmignore
+└── templates/
+    ├── db-deployment.yaml
+    ├── db-service.yaml
+    ├── redis-deployment.yaml
+    ├── redis-service.yaml
+    ├── result-deployment.yaml
+    ├── result-service.yaml
+    ├── vote-deployment.yaml
+    ├── vote-service.yaml
+    └── worker-deployment.yaml
+```
+
+Validate the chart:
+
+```bash
+helm lint helm
+```
+
+Render the Kubernetes manifests:
+
+```bash
+helm template voting-app helm
+```
+
+Install the application:
+
+```bash
+helm install voting-app ./helm
+```
+
+Check the deployment:
+
+```bash
+kubectl get pods
+kubectl get services
+```
+
+## 6. Application Services
+
+The deployed services use the following Kubernetes configuration:
+
+| Service | Type | Port |
+|------------|------------|------:|
+| Vote       | NodePort   | 31000 |
+| Result     | NodePort   | 31001 |
+| Redis      | ClusterIP  | 6379  |
+| PostgreSQL | ClusterIP  | 5432  |
+
+The Vote and Result applications are externally accessible through the EKS worker nodes.
+
+## 7. Helm Rollback Demonstration
+
+A bad release was intentionally deployed using an invalid Vote image tag:
+
+```bash
+helm upgrade voting-app ./helm \
+  --set images.vote.tag=bad-release-demo
+```
+
+The release history was then inspected:
+
+```bash
+helm history voting-app
+```
+
+The application was restored to the known-good revision:
+
+```bash
+helm rollback voting-app 1
+```
+
+The rollback created a new deployed revision.
+
+Final verification:
+
+```bash
+kubectl get pods
+```
+
+All five application components returned to:
+
+```text
+1/1 Running
+```
+
+This demonstrates that the application can be rolled back after a bad deployment.
+
+## 8. Verification
+
+The deployed application was tested end-to-end.
+
+The Vote service returned:
+
+```text
+HTTP/1.1 200 OK
+```
+
+The Result service returned:
+
+```text
+HTTP/1.1 200 OK
+```
+
+A real vote was submitted through the deployed application and successfully appeared in the Result application.
+
+This verified the complete application flow:
+
+```text
+Vote
+  ↓
+Redis
+  ↓
+Worker
+  ↓
+PostgreSQL
+  ↓
+Result
+```
+
+## 9. Repository Structure
+
+```text
+example-voting-app/
+├── .github/
+│   └── workflows/
+│       └── ci-cd.yaml
+├── helm/
+├── k8s-specifications/
+├── result/
+├── vote/
+├── worker/
+├── terraform/
+├── docker-compose.yml
+└── README.md
+```
+
+## 10. Capstone 1 Deliverables
+
+The project includes:
+
+- [x] Forked Voting App repository
+- [x] Docker containerization
+- [x] Hardened Docker images
+- [x] Pinned base images
+- [x] Non-root containers
+- [x] Docker `.dockerignore`
+- [x] Terraform EKS infrastructure
+- [x] GitHub Actions CI/CD pipeline
+- [x] Trivy vulnerability scanning
+- [x] SHA-tagged container images
+- [x] GHCR image publishing
+- [x] Helm chart
+- [x] Working EKS deployment
+- [x] Successful end-to-end voting test
+- [x] Helm rollback demonstration
+- [ ] Architecture diagram
 
 ## Architecture
 
-![Architecture diagram](architecture.excalidraw.png)
+The application architecture diagram should show:
 
-* A front-end web app in [Python](/vote) which lets you vote between two options
-* A [Redis](https://hub.docker.com/_/redis/) which collects new votes
-* A [.NET](/worker/) worker which consumes votes and stores them in…
-* A [Postgres](https://hub.docker.com/_/postgres/) database backed by a Docker volume
-* A [Node.js](/result) web app which shows the results of the voting in real time
+```text
+                    AWS / Amazon EKS
+                         |
+              +----------+----------+
+              |                     |
+        Vote NodePort          Result NodePort
+          :31000                  :31001
+              |                     |
+              v                     v
+          Vote Pod              Result Pod
+              |                     |
+              v                     |
+          Redis Pod                 |
+              |                     |
+              v                     |
+          Worker Pod                |
+              |                     |
+              v                     |
+        PostgreSQL Pod <------------+
+```
 
-## Notes
+## Technologies
 
-The voting application only accepts one vote per client browser. It does not register additional votes if a vote has already been submitted from a client.
-
-This isn't an example of a properly architected perfectly designed distributed app... it's just a simple
-example of the various types of pieces and languages you might see (queues, persistent data, etc), and how to
-deal with them in Docker at a basic level.
+- Docker
+- Docker Compose
+- Kubernetes
+- Amazon EKS
+- Terraform
+- Helm
+- GitHub Actions
+- GitHub Container Registry
+- Trivy
+- Python
+- Node.js
+- .NET
+- Redis
+- PostgreSQL
